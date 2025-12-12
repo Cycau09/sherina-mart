@@ -459,7 +459,7 @@ class MenuCommand extends Command
         $struk = "\n";
         $struk .= "========================================\n";
         $struk .= "           SHERINA MART                 \n";
-        $struk .= "     Jl.  No. 123, Kota Makasar         \n";
+        $struk .= "     Jl.  No. 123, Kota abc             \n";
         $struk .= "          Telp: 0812-xxxx-xxxx         \n";
         $struk .= "========================================\n";
         $struk .= "Tanggal: {$tanggal}\n";
