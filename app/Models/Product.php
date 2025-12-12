@@ -13,8 +13,15 @@ use App\Models\SaleTransaction;
 class Product extends Model
 {
     use HasUuids;
-    protected $fillable = ["code", "name"];
-    protected $casts = ["code" => "integer", "name" => "string", "price" => "integer"];
+    
+    // ========== MULAI: Perbaikan $fillable - Tambah field yang kurang ==========
+    protected $fillable = ["code", "name", "price", "stock", "category_id", "variety_id"];
+    // ========== AKHIR: Perbaikan $fillable ==========
+    
+    // ========== MULAI: Tambah stock ke $casts ==========
+    protected $casts = ["code" => "integer", "name" => "string", "price" => "integer", "stock" => "integer"];
+    // ========== AKHIR: Tambah stock ke $casts ==========
+
 
     public function variety(): BelongsTo
     {

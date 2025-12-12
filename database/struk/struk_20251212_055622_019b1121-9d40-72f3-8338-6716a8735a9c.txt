@@ -1,0 +1,19 @@
+
+========================================
+           SHERINA MART                 
+     Jl.  No. 123, Kota Makasar         
+          Telp: 0812-xxxx-xxxx         
+========================================
+Tanggal: 12/12/2025 05:56:14
+No. Transaksi: 019b1121-9d40-72f3-8338-6716a8735a9c
+----------------------------------------
+Nama Barang  : teluar
+Kode Barang  : 1
+Harga Satuan : Rp 2.000
+Jumlah       : 0
+----------------------------------------
+TOTAL BAYAR  : Rp 0
+========================================
+      Terima Kasih Atas Kunjungan      
+           Anda - Sherina Mart         
+========================================
