@@ -21,92 +21,90 @@ class MenuCommand extends Command
     public function handle()
     {
         // ==============================
-        // START UPDATE: Menu Utama Loop
-        // Perubahan:
-        // - Menggunakan while(true) untuk membungkus seluruh logika menu utama.
-        // - Menangkap output 'null' dari menu selection sebagai sinyal Exit.
-        // Alasan:
-        // - Memastikan aplikasi tidak tertutup otomatis setelah menjalankan satu perintah.
-        // - Pengguna harus secara eksplisit memilih keluar atau membatalkan menu.
+        // FIX: Mengganti $this->menu() ke select()
+        // Alasan: Infinite loop "Cannot shrink menu" di Windows PowerShell karena margin terlalu besar.
+        // Solusi: Menggunakan Laravel\Prompts\select() yang lebih kompatibel dan efisien.
         // ==============================
-        $title = "Selamat di Applikasi Kami\nSilahkan Pilih Menu Berikut :";
-        $options = [
-            "Pilihan 1: Transaksi Pembelian Barang",
-            "Pilihan 2: Daftar Kategori Barang",
-            "Pilihan 3: Tambah Kategori Barang",
-            "Pilihan 4: Ubah Kategori Barang",
-            "Pilihan 5: Hapus Kategori Barang",
-            "Pilihan 6: Daftar Jenis Barang",
-            "Pilihan 7: Tambah Jenis Barang",
-            "Pilihan 8: Ubah Jenis Barang",
-            "Pilihan 9: Hapus Jenis Barang",
-            "Pilihan 10: Daftar Barang",
-            "Pilihan 11: Tambah Barang",
-            "Pilihan 12: Ubah Barang",
-            "Pilihan 13: Hapus Barang",
-            "Pilihan 14: Daftar Penjualan Barang",
-        ];
-
+        
         while (true) {
             try {
-                // Tampilan Menu Utama
-                $option = $this->menu($title, $options)
-                    ->setForegroundColour("green")
-                    ->setBackgroundColour("black")
-                    ->setWidth(200)
-                    ->setPadding(10)
-                    ->setMargin(5)
-                    ->setTitleSeparator("*-")
-                    ->open();
+                // Tampilkan ASCII Header
+                $this->line("");
+                $this->line($this->getAsciiHeader());
+                $this->line("");
+                $this->info("Selamat Datang di Aplikasi Sherina Mart");
+                $this->line("");
 
-                // Jika null (Exit default), keluar dari loop utama (Tutup Aplikasi)
-                if ($option === null) {
+                $option = select(
+                    label: 'Pilih Menu:',
+                    options: [
+                        1 => 'Transaksi Pembelian Barang',
+                        2 => 'Daftar Kategori Barang',
+                        3 => 'Tambah Kategori Barang',
+                        4 => 'Ubah Kategori Barang',
+                        5 => 'Hapus Kategori Barang',
+                        6 => 'Daftar Jenis Barang',
+                        7 => 'Tambah Jenis Barang',
+                        8 => 'Ubah Jenis Barang',
+                        9 => 'Hapus Jenis Barang',
+                        10 => 'Daftar Barang',
+                        11 => 'Tambah Barang',
+                        12 => 'Ubah Barang',
+                        13 => 'Hapus Barang',
+                        14 => 'Daftar Penjualan Barang',
+                        15 => 'Keluar dari Aplikasi',
+                    ],
+                    scroll: 10
+                );
+
+                // Jika pilih keluar
+                if ($option === 15 || $option === null) {
                     $this->info("Terimakasih telah menggunakan applikasi kami.");
                     break;
                 }
 
                 // Dispatcher ke Method yang sesuai
                 switch ($option) {
-                    case 0:
+                    case 1:
                         $this->handleTransaction();
                         break;
-                    case 1:
+                    case 2:
                         $this->handleCategoryList();
                         break;
-                    case 2:
+                    case 3:
                         $this->handleCategoryAdd();
                         break;
-                    case 3:
+                    case 4:
                         $this->handleCategoryEdit();
                         break;
-                    case 4:
+                    case 5:
                         $this->handleCategoryDelete();
                         break;
-                    case 5:
+                    case 6:
                         $this->handleVarietyList();
                         break;
-                    case 6:
+                    case 7:
                         $this->handleVarietyAdd();
                         break;
-                    case 7:
+                    case 8:
                         $this->handleVarietyEdit();
                         break;
-                    case 8:
+                    case 9:
                         $this->handleVarietyDelete();
                         break;
-                    case 9:
+                    case 10:
                         $this->handleProductList();
                         break;
-                    case 10:
+                    case 11:
                         $this->handleProductAdd();
                         break;
-                    case 11:
+                    case 12:
                         $this->handleProductEdit();
                         break;
-                    case 12:
+                    case 13:
                         $this->handleProductDelete();
                         break;
-                    case 13:
+                    case 14:
                         $this->handleSalesList();
                         break;
                 }
@@ -119,10 +117,10 @@ class MenuCommand extends Command
             }
         }
         // ==============================
-        // END UPDATE: Menu Utama Loop
+        // END UPDATE: Menu Utama (Sekarang pakai select())
         // Hasil:
-        // - Aplikasi terus berjalan sampai user memilih keluar.
-        // - Error handling memastikan aplikasi robust (tidak crash).
+        // - Tidak ada lagi infinite loop di PowerShell.
+        // - Lebih kompatibel dengan terminal apapun.
         // ==============================
     }
 
@@ -204,7 +202,9 @@ class MenuCommand extends Command
         }
 
         $trx = SaleTransaction::find($selectedId);
-        if ($this->confirm("Yakin batalkan transaksi {$trx->product->name}?", true)) {
+        // FIX CRASH: Cek produk terhapus sebelum confirm
+        $productName = $trx->product ? $trx->product->name : 'Produk Terhapus';
+        if ($this->confirm("Yakin batalkan transaksi {$productName}?", true)) {
             if ($trx->product) {
                 $trx->product->stock += $trx->quantity;
                 $trx->product->save();
@@ -270,10 +270,11 @@ class MenuCommand extends Command
                 }
 
                 $choosen = $products->find($prodId);
-                $qty = (int) $this->ask("Jumlah beli (Stok: {$choosen->stock}):");
+                // UPDATE: Pakai Validasi Helper
+                $qty = $this->askValidInteger("Jumlah beli (Stok: {$choosen->stock}):", 1);
 
-                if ($qty <= 0 || $qty > $choosen->stock) {
-                    $this->error("Jumlah tidak valid!");
+                if ($qty > $choosen->stock) {
+                    $this->error("Stok tidak cukup! Tersedia: {$choosen->stock}");
                     continue;
                 }
 
@@ -323,7 +324,8 @@ class MenuCommand extends Command
 
                 $payment = 0;
                 while ($payment < $cartTotal) {
-                    $payment = (int) $this->ask("Masukkan Jumlah Uang Tunai:");
+                    // UPDATE: Pakai Validasi Helper
+                    $payment = $this->askValidInteger("Masukkan Jumlah Uang Tunai:", 0);
                     if ($payment < $cartTotal) {
                         $this->error("Uang kurang! Kurang: " . $this->formatRupiah($cartTotal - $payment));
                     }
@@ -436,8 +438,26 @@ class MenuCommand extends Command
     {
         $this->info("Tambah Kategori Barang");
         $category = new Category();
-        $category->code = (int) $this->ask("Masukkan Kode Kategori : ");
-        $category->name = $this->ask("Masukkan Nama Kategori : ");
+        // Validasi Kode (Duplikasi)
+        do {
+            $category->code = $this->askValidInteger("Masukkan Kode Kategori :");
+            if (Category::where('code', $category->code)->exists()) {
+                $this->error("Kode sudah digunakan! Silakan masukkan kode lain.");
+            } else {
+                break;
+            }
+        } while (true);
+
+        // Validasi Nama (Tidak Boleh Kosong)
+        do {
+            $category->name = $this->ask("Masukkan Nama Kategori : ");
+            if (empty(trim($category->name))) {
+                $this->error("Nama tidak boleh kosong!");
+            } else {
+                break;
+            }
+        } while (true);
+
         if ($category->save()) {
             $this->notify("Success", "data berhasil disimpan");
         } else {
@@ -448,7 +468,7 @@ class MenuCommand extends Command
     private function handleCategoryEdit()
     {
         $this->info("Ubah Kategori Barang");
-        $code = (int) $this->ask("Masukkan Kode Kategori yang akan diubah : ");
+        $code = $this->askValidInteger("Masukkan Kode Kategori yang akan diubah :");
         $category = Category::where('code', $code)->first();
 
         if (!$category) {
@@ -456,8 +476,27 @@ class MenuCommand extends Command
             return;
         }
 
-        $category->code = (int) $this->ask("Masukkan Kode Kategori : ");
-        $category->name = $this->ask("Masukkan Nama Kategori : ");
+        // Validasi Kode Baru (Duplikasi)
+        do {
+            $newCode = $this->askValidInteger("Masukkan Kode Kategori Baru :", 0, (string) $category->code);
+            if ($newCode != $category->code && Category::where('code', $newCode)->exists()) {
+                $this->error("Kode sudah digunakan! Silakan masukkan kode lain.");
+            } else {
+                $category->code = $newCode;
+                break;
+            }
+        } while (true);
+
+        // Validasi Nama (Tidak Boleh Kosong)
+        do {
+            $category->name = $this->ask("Masukkan Nama Kategori : ", $category->name);
+            if (empty(trim($category->name))) {
+                $this->error("Nama tidak boleh kosong!");
+            } else {
+                break;
+            }
+        } while (true);
+
         if ($category->save()) {
             $this->notify("Success", "data berhasil diubah");
         } else {
@@ -468,7 +507,7 @@ class MenuCommand extends Command
     private function handleCategoryDelete()
     {
         $this->info("Hapus Kategori Barang");
-        $code = (int) $this->ask("Masukkan Kode Kategori yang akan dihapus : ");
+        $code = $this->askValidInteger("Masukkan Kode Kategori yang akan dihapus :");
         $category = Category::where('code', $code)->first();
 
         if (!$category) {
@@ -478,6 +517,14 @@ class MenuCommand extends Command
 
         if (!$this->confirm("Apakah Anda yakin ingin menghapus kategori '{$category->name}'?")) {
             $this->info("Penghapusan dibatalkan.");
+            return;
+        }
+
+        // CEK INTEGRITAS DATA: Jangan hapus jika ada barang
+        $productCount = Product::where('category_id', $category->id)->count();
+        if ($productCount > 0) {
+            $this->error("GAGAL: Kategori tidak dapat dihapus karena masih memiliki {$productCount} barang terdaftar.");
+            $this->line("Silahkan hapus atau pindahkan barang terlebih dahulu.");
             return;
         }
 
@@ -558,8 +605,27 @@ class MenuCommand extends Command
     {
         $this->info("Tambah Jenis Barang");
         $variety = new Variety();
-        $variety->code = (int) $this->ask("Masukkan Kode Jenis : ");
-        $variety->name = $this->ask("Masukkan Nama Jenis : ");
+        
+        // Validasi Kode (Duplikasi)
+        do {
+            $variety->code = $this->askValidInteger("Masukkan Kode Jenis :");
+            if (Variety::where('code', $variety->code)->exists()) {
+                $this->error("Kode sudah digunakan! Silakan masukkan kode lain.");
+            } else {
+                break;
+            }
+        } while (true);
+
+        // Validasi Nama (Tidak Boleh Kosong)
+        do {
+            $variety->name = $this->ask("Masukkan Nama Jenis : ");
+            if (empty(trim($variety->name))) {
+                $this->error("Nama tidak boleh kosong!");
+            } else {
+                break;
+            }
+        } while (true);
+
         if ($variety->save()) {
             $this->notify("Success", "data berhasil disimpan");
         } else {
@@ -570,7 +636,7 @@ class MenuCommand extends Command
     private function handleVarietyEdit()
     {
         $this->info("Ubah Jenis Barang");
-        $code = (int) $this->ask("Masukkan Kode Jenis yang akan diubah : ");
+        $code = $this->askValidInteger("Masukkan Kode Jenis yang akan diubah :");
         $variety = Variety::where('code', $code)->first();
 
         if (!$variety) {
@@ -578,8 +644,27 @@ class MenuCommand extends Command
             return;
         }
 
-        $variety->code = (int) $this->ask("Masukkan Kode Jenis : ");
-        $variety->name = $this->ask("Masukkan Nama Jenis : ");
+        // Validasi Kode Baru (Duplikasi)
+        do {
+            $newCode = $this->askValidInteger("Masukkan Kode Jenis Baru :", 0, (string) $variety->code);
+            if ($newCode != $variety->code && Variety::where('code', $newCode)->exists()) {
+                $this->error("Kode sudah digunakan! Silakan masukkan kode lain.");
+            } else {
+                $variety->code = $newCode;
+                break;
+            }
+        } while (true);
+
+        // Validasi Nama (Tidak Boleh Kosong)
+        do {
+            $variety->name = $this->ask("Masukkan Nama Jenis : ", $variety->name);
+            if (empty(trim($variety->name))) {
+                $this->error("Nama tidak boleh kosong!");
+            } else {
+                break;
+            }
+        } while (true);
+
         if ($variety->save()) {
             $this->notify("Success", "data berhasil diubah");
         } else {
@@ -590,7 +675,7 @@ class MenuCommand extends Command
     private function handleVarietyDelete()
     {
         $this->info("Hapus Jenis Barang");
-        $code = (int) $this->ask("Masukkan Kode Jenis yang akan dihapus : ");
+        $code = $this->askValidInteger("Masukkan Kode Jenis yang akan dihapus :");
         $variety = Variety::where('code', $code)->first();
 
         if (!$variety) {
@@ -600,6 +685,14 @@ class MenuCommand extends Command
 
         if (!$this->confirm("Apakah Anda yakin ingin menghapus jenis '{$variety->name}'?")) {
             $this->info("Penghapusan dibatalkan.");
+            return;
+        }
+
+        // INTEGRITAS: Cek apakah masih ada produk dengan jenis ini
+        $productCount = Product::where('variety_id', $variety->id)->count();
+        if ($productCount > 0) {
+            $this->error("GAGAL: Jenis tidak dapat dihapus karena masih memiliki {$productCount} produk terdaftar.");
+            $this->line("Silahkan hapus atau pindahkan produk terlebih dahulu.");
             return;
         }
 
@@ -689,28 +782,35 @@ class MenuCommand extends Command
         $this->info("Tambah Barang");
         $product = new Product();
 
+        // Cek Ketersediaan Kategori
         $categories = Category::all()->pluck('name', 'id')->toArray();
+        if (empty($categories)) {
+            $this->error("Belum ada Kategori! Silakan tambahkan Kategori terlebih dahulu.");
+            return;
+        }
         $product->category_id = select(label: 'Pilih Kategori Barang:', options: $categories);
 
+        // Cek Ketersediaan Jenis
         $varieties = Variety::all()->pluck('name', 'id')->toArray();
+        if (empty($varieties)) {
+            $this->error("Belum ada Jenis Barang! Silakan tambahkan Jenis terlebih dahulu.");
+            return;
+        }
         $product->variety_id = select(label: 'Pilih Jenis Barang:', options: $varieties);
 
-        $product->code = (int) $this->ask("Masukkan Kode Barang : ");
+        // Validasi Kode (Duplikasi)
+        do {
+            $product->code = $this->askValidInteger("Masukkan Kode Barang :");
+            if (Product::where('code', $product->code)->exists()) {
+                $this->error("Kode sudah digunakan! Silakan masukkan kode lain.");
+            } else {
+                break;
+            }
+        } while (true);
+
         $product->name = $this->ask("Masukkan Nama Barang : ");
-
-        do {
-            $inputPrice = (int) $this->ask("Masukkan Harga Barang (harus > 0) : ");
-            if ($inputPrice <= 0)
-                $this->error("Harga tidak boleh nol atau negatif!");
-        } while ($inputPrice <= 0);
-        $product->price = $inputPrice;
-
-        do {
-            $inputStock = (int) $this->ask("Masukkan Jumlah Stok (harus >= 0) : ");
-            if ($inputStock < 0)
-                $this->error("Stok tidak boleh negatif!");
-        } while ($inputStock < 0);
-        $product->stock = $inputStock;
+        $product->price = $this->askValidInteger("Masukkan Harga Barang (harus > 0) :", 1);
+        $product->stock = $this->askValidInteger("Masukkan Jumlah Stok (harus >= 0) :", 0);
 
         if ($product->save()) {
             $this->notify("Success", "data berhasil disimpan");
@@ -722,7 +822,7 @@ class MenuCommand extends Command
     private function handleProductEdit()
     {
         $this->info("Ubah Barang");
-        $code = (int) $this->ask("Masukkan Kode Barang yang akan diubah : ");
+        $code = $this->askValidInteger("Masukkan Kode Barang yang akan diubah :");
         $product = Product::where('code', $code)->first();
 
         if (!$product) {
@@ -736,10 +836,12 @@ class MenuCommand extends Command
         $varieties = Variety::all()->pluck('name', 'id')->toArray();
         $product->variety_id = select(label: 'Pilih Jenis Barang:', options: $varieties);
 
-        $product->code = (int) $this->ask("Masukkan Kode Barang : ");
-        $product->name = $this->ask("Masukkan Nama Barang : ");
-        $product->price = (int) $this->ask("Masukkan Harga Barang : ");
-        $product->stock = (int) $this->ask("Masukkan Jumlah Stok : ", (string) $product->stock);
+        $product->code = $this->askValidInteger("Masukkan Kode Barang :", 0, (string) $product->code);
+        $product->name = $this->ask("Masukkan Nama Barang : ", $product->name);
+        
+        // Gunakan Helper Validasi
+        $product->price = $this->askValidInteger("Masukkan Harga Barang (harus > 0) :", 1, (string) $product->price);
+        $product->stock = $this->askValidInteger("Masukkan Jumlah Stok (harus >= 0) :", 0, (string) $product->stock);
 
         if ($product->save()) {
             $this->notify("Success", "data berhasil diubah");
@@ -751,7 +853,7 @@ class MenuCommand extends Command
     private function handleProductDelete()
     {
         $this->info("Hapus Barang");
-        $code = (int) $this->ask("Masukkan Kode Barang yang akan dihapus : ");
+        $code = $this->askValidInteger("Masukkan Kode Barang yang akan dihapus :");
         $product = Product::where('code', $code)->first();
 
         if (!$product) {
@@ -761,6 +863,14 @@ class MenuCommand extends Command
 
         if (!$this->confirm("Apakah Anda yakin ingin menghapus barang '{$product->name}'?")) {
             $this->info("Penghapusan dibatalkan.");
+            return;
+        }
+
+        // CEK INTEGRITAS DATA: Jangan hapus jika sudah ada transaksi penjualan
+        $trxCount = SaleTransaction::where('product_id', $product->id)->count();
+        if ($trxCount > 0) {
+            $this->error("GAGAL: Barang tidak dapat dihapus karena memiliki riwayat {$trxCount} transaksi penjualan.");
+            $this->line("Data barang diperlukan untuk laporan penjualan.");
             return;
         }
 
@@ -777,14 +887,23 @@ class MenuCommand extends Command
 
     private function handleSalesList()
     {
+        $this->info("Daftar Penjualan Barang");
+        $sales = SaleTransaction::all();
+
+        if ($sales->isEmpty()) {
+            $this->info("Belum ada data penjualan.");
+            $this->ask("Tekan Enter untuk kembali ke menu utama");
+            return;
+        }
+
         $headers = ['kode', 'nama', 'harga', 'jumlah', 'bayar', 'dibuat', 'diubah'];
-        $data = SaleTransaction::all()->map(function ($item) {
+        $data = $sales->map(function ($item) {
             return [
                 'kode' => $item->product ? $item->product->code : 'DEL',
                 'nama' => $item->product ? $item->product->name : 'Deleted',
-                'harga' => $item->price,
+                'harga' => $this->formatRupiah($item->price),
                 'jumlah' => $item->quantity,
-                'jumlah bayar' => $item->quantity * $item->price,
+                'jumlah bayar' => $this->formatRupiah($item->quantity * $item->price),
                 'dibuat' => $item->created_at,
                 'diubah' => $item->updated_at,
             ];
@@ -797,6 +916,47 @@ class MenuCommand extends Command
     // =========================================================================
     // HELPER METHODS
     // =========================================================================
+
+    private function getAsciiHeader(): string
+    {
+        return <<<EOT
+   _____ __               _                __  __            __ 
+  / ___// /_  ___  ____  (_)___  ____ _   /  |/  /___ ______/ /_
+  \__ \/ __ \/ _ \/ __ \/ / __ \/ __ `/  / /|_/ / __ `/ ___/ __/
+ ___/ / / / /  __/ / / / / / / / /_/ /  / /  / / /_/ / /  / /_  
+/____/_/ /_/\___/_/ /_/_/_/ /_/\__,_/  /_/  /_/\__,_/_/   \__/  
+                                                  by cycau09
+EOT;
+    }
+
+    /**
+     * Helper untuk meminta input integer dengan validasi loop.
+     * "Anti Salah Input"
+     */
+    private function askValidInteger(string $question, int $min = 0, ?string $default = null): int
+    {
+        do {
+            $input = $this->ask($question, $default);
+
+            // Jika input kosong dan ada default, pakai default (Logic ask() sebenarnya sudah handle ini, tapi kita pastikan)
+            if ($input === null && $default !== null) {
+                return (int) $default;
+            }
+
+            if (!is_numeric($input)) {
+                $this->error("Input tidak valid! Harap masukkan angka.");
+                continue;
+            }
+
+            $val = (int) $input;
+            if ($val < $min) {
+                $this->error("Nilai tidak valid! Minimal {$min}.");
+                continue;
+            }
+
+            return $val;
+        } while (true);
+    }
 
     private function formatRupiah(int $amount): string
     {
