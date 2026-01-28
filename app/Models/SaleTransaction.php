@@ -18,8 +18,10 @@ class SaleTransaction extends Model
         "quantity" => "integer"
     ];
 
+    // ========== MULAI: Update Relasi agar mendukung data Terhapus (Soft Deletes) ==========
     public function product(): BelongsTo
     {
-        return $this->belongsTo(Product::class);
+        return $this->belongsTo(Product::class)->withTrashed();
     }
+    // ========== AKHIR: Update Relasi ==========
 }

@@ -1,0 +1,1394 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Commands;
+
+use Illuminate\Console\Scheduling\Schedule;
+use LaravelZero\Framework\Commands\Command;
+use function Laravel\Prompts\select;
+use App\Models\Category;
+use App\Models\Variety;
+use App\Models\Product;
+use App\Models\SaleTransaction;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+
+// ========== MULAI: Import Action Classes ==========
+use App\Actions\Kategori\DaftarKategori;
+use App\Actions\Kategori\TambahKategori;
+use App\Actions\Kategori\UbahKategori;
+use App\Actions\Kategori\HapusKategori;
+use App\Actions\Jenis\DaftarJenis;
+use App\Actions\Jenis\TambahJenis;
+use App\Actions\Jenis\UbahJenis;
+use App\Actions\Jenis\HapusJenis;
+use App\Actions\Barang\DaftarBarang;
+use App\Actions\Barang\TambahBarang;
+use App\Actions\Barang\UbahBarang;
+use App\Actions\Barang\HapusBarang;
+// ========== AKHIR: Import Action Classes ==========
+
+class MenuCommand extends Command
+{
+    protected $signature = 'app:menu-command';
+    protected $description = 'menampilkan Menu pada pengguna';
+
+    public function handle()
+    {
+        // ==============================
+        // FIX: Mengganti $this->menu() ke select()
+        // Alasan: Infinite loop "Cannot shrink menu" di Windows PowerShell karena margin terlalu besar.
+        // Solusi: Menggunakan Laravel\Prompts\select() yang lebih kompatibel dan efisien.
+        // ==============================
+        
+        while (true) {
+            try {
+                // Tampilkan ASCII Header
+                $this->line("");
+                $this->line($this->getAsciiHeader());
+                $this->line("");
+                $this->info("Selamat Datang di Aplikasi Sherina Mart");
+                $this->line("");
+
+                $option = select(
+                    label: 'Pilih Menu:',
+                    options: [
+                        1 => 'Transaksi Pembelian Barang',
+                        2 => 'Daftar Kategori Barang',
+                        3 => 'Tambah Kategori Barang',
+                        4 => 'Ubah Kategori Barang',
+                        5 => 'Hapus Kategori Barang',
+                        6 => 'Daftar Jenis Barang',
+                        7 => 'Tambah Jenis Barang',
+                        8 => 'Ubah Jenis Barang',
+                        9 => 'Hapus Jenis Barang',
+                        10 => 'Daftar Barang',
+                        11 => 'Tambah Barang',
+                        12 => 'Ubah Barang',
+                        13 => 'Hapus Barang',
+                        14 => 'Daftar Penjualan Barang',
+                        15 => 'Keluar dari Aplikasi',
+                    ],
+                    scroll: 10
+                );
+
+                // ========== MULAI: Konfirmasi Keluar ==========
+                // Jika pilih keluar
+                if ($option === 15 || $option === null) {
+                    if ($this->confirm("Apakah Anda yakin ingin keluar dari aplikasi?", true)) {
+                        $this->info("Terimakasih telah menggunakan applikasi kami.");
+                        break;
+                    } else {
+                        continue; // Kembali ke menu utama
+                    }
+                }
+                // ========== AKHIR: Konfirmasi Keluar ==========
+
+                // ========== MULAI: Dispatcher dengan Action Pattern ==========
+                switch ($option) {
+                    case 1:
+                        $this->handleTransaction();
+                        break;
+                    // Kategori - menggunakan Action
+                    case 2:
+                        (new DaftarKategori($this))->jalankan();
+                        break;
+                    case 3:
+                        (new TambahKategori($this))->jalankan();
+                        break;
+                    case 4:
+                        (new UbahKategori($this))->jalankan();
+                        break;
+                    case 5:
+                        (new HapusKategori($this))->jalankan();
+                        break;
+                    // Jenis - menggunakan Action
+                    case 6:
+                        (new DaftarJenis($this))->jalankan();
+                        break;
+                    case 7:
+                        (new TambahJenis($this))->jalankan();
+                        break;
+                    case 8:
+                        (new UbahJenis($this))->jalankan();
+                        break;
+                    case 9:
+                        (new HapusJenis($this))->jalankan();
+                        break;
+                    // Barang - menggunakan Action
+                    case 10:
+                        (new DaftarBarang($this))->jalankan();
+                        break;
+                    case 11:
+                        (new TambahBarang($this))->jalankan();
+                        break;
+                    case 12:
+                        (new UbahBarang($this))->jalankan();
+                        break;
+                    case 13:
+                        (new HapusBarang($this))->jalankan();
+                        break;
+                    // Laporan - masih pakai method lama (sementara)
+                    case 14:
+                        $this->handleSalesList();
+                        break;
+                }
+                // ========== AKHIR: Dispatcher dengan Action Pattern ==========
+
+            } catch (\Throwable $e) {
+                // Global Error Handler untuk mencegah Crash
+                $this->error("❌ TERJADI KESALAHAN: " . $e->getMessage());
+                $this->line("Lokasi Error: " . $e->getFile() . " (Baris " . $e->getLine() . ")");
+                $this->info("⚠️  Aplikasi akan kembali ke Menu Utama...");
+                $this->ask("Tekan Enter untuk melanjutkan");
+                // Loop akan berlanjut (continue otomatis)
+            }
+        }
+        // ==============================
+        // END UPDATE: Menu Utama (Sekarang pakai select())
+        // Hasil:
+        // - Tidak ada lagi infinite loop di PowerShell.
+        // - Lebih kompatibel dengan terminal apapun.
+        // ==============================
+    }
+
+    // =========================================================================
+    // MODUL TRANSAKSI
+    // =========================================================================
+
+    private function handleTransaction()
+    {
+        // ==============================
+        // START UPDATE: Submenu Transaksi Loop
+        // Perubahan:
+        // - Membungkus pilihan menu transaksi dalam while(true).
+        // Alasan:
+        // - Agar setelah selesai 'void' atau 'batal', user kembali memilih menu transaksi, bukan terpental keluar.
+        // ==============================
+        while (true) {
+            $subOption = select(
+                label: 'Menu Transaksi:',
+                options: [
+                    'new' => 'Transaksi Pembelian Baru',
+                    'void' => 'Batalkan Transaksi (Void)',
+                    'cancel' => 'Kembali ke Menu Utama',
+                ],
+            );
+
+            // ==============================
+            // START UPDATE: Back Logic
+            // Perubahan: Menggunakan return untuk kembali ke caller (Menu Utama)
+            // Alasan: Menjaga alur stack pemanggilan.
+            // ==============================
+            if ($subOption === 'cancel') {
+                return; // KEMBALI KE MENU UTAMA
+            }
+
+            if ($subOption === 'void') {
+                $this->handleVoidTransaction();
+                // Setelah selesai void, loop akan berulang (kembali ke menu transaksi)
+            }
+
+            if ($subOption === 'new') {
+                $this->handleNewTransaction();
+                // Setelah selesai transaksi, loop akan berulang (kembali ke menu transaksi)
+            }
+        }
+        // ==============================
+        // END UPDATE: Submenu Transaksi Loop
+        // Hasil: User tetap berada di konteks transaksi sampai memilih kembali.
+        // ==============================
+    }
+
+    private function handleVoidTransaction()
+    {
+        $this->info("Mode Pembatalan Transaksi");
+        $transactions = SaleTransaction::with('product')->latest()->take(10)->get();
+
+        if ($transactions->isEmpty()) {
+            $this->error("Belum ada transaksi yang dapat dibatalkan.");
+            return;
+        }
+
+        // ========== MULAI: Submenu Void dengan Fitur Pencarian ==========
+        $choices = ['search' => '🔍 Cari Transaksi (Nama Produk)'];
+        foreach ($transactions as $t) {
+            $time = $t->created_at->format('d/m H:i');
+            $productName = $t->product ? $t->product->name : 'Produk Terhapus';
+            $label = "[{$time}] {$productName} - {$this->formatRupiah($t->price)} x {$t->quantity}";
+            $choices[$t->id] = $label;
+        }
+        $choices['cancel'] = 'Batal & Kembali';
+
+        $selectedId = select(
+            label: 'Pilih atau Cari Transaksi untuk dibatalkan:',
+            options: $choices,
+            scroll: 10
+        );
+
+        if ($selectedId === 'search') {
+            $query = $this->ask("Masukkan Nama Produk :");
+            if (empty($query)) return;
+
+            $foundTrx = SaleTransaction::with(['product' => function($q) { $q->withTrashed(); }])
+                ->whereHas('product', function($q) use ($query) {
+                    $q->where('name', 'like', "%{$query}%");
+                })->latest()->take(20)->get();
+
+            if ($foundTrx->isEmpty()) {
+                $this->error("Transaksi dengan produk '{$query}' tidak ditemukan.");
+                return;
+            }
+
+            $searchChoices = [];
+            foreach ($foundTrx as $ft) {
+                $time = $ft->created_at->format('d/m H:i');
+                $name = $ft->product ? $ft->product->name : 'Produk Terhapus';
+                $searchChoices[$ft->id] = "[{$time}] {$name} - {$this->formatRupiah($ft->price)} x {$ft->quantity}";
+            }
+            $searchChoices['back'] = '<< Kembali';
+            $selectedId = select(label: 'Hasil Pencarian (20 Terakhir):', options: $searchChoices);
+            if ($selectedId === 'back' || $selectedId === null) return;
+        }
+        // ========== AKHIR: Submenu Void dengan Fitur Pencarian ==========
+
+        if ($selectedId === 'cancel' || $selectedId === null) {
+            return;
+        }
+
+        $trx = SaleTransaction::find($selectedId);
+        // FIX CRASH: Cek produk terhapus sebelum confirm
+        $productName = $trx->product ? $trx->product->name : 'Produk Terhapus';
+        if ($this->confirm("Yakin batalkan transaksi {$productName}?", true)) {
+            if ($trx->product) {
+                $trx->product->stock += $trx->quantity;
+                $trx->product->save();
+            }
+            $trx->delete();
+            $this->info("Transaksi berhasil dibatalkan (Void). Stok dikembalikan.");
+        }
+    }
+
+    private function handleNewTransaction()
+    {
+        // Shopping Cart Logic
+        $cart = [];
+        $cartTotal = 0;
+        $cartTitle = "Keranjang Belanja (Kosong)";
+
+        while (true) {
+            $this->line("");
+            $this->info($cartTitle);
+
+            $action = select(
+                label: 'Aksi Keranjang:',
+                options: [
+                    'add' => '+ Tambah Barang (Daftar)',
+                    'search' => '🔍 Cari Barang (Nama/Kode)',
+                    'view' => '🛒 Lihat Keranjang',
+                    'edit' => '⚙️ Kelola Keranjang (Ubah/Hapus Item)',
+                    'checkout' => '💰 Bayar / Checkout 💰',
+                    'cancel' => '⬅ Batal & Kembali',
+                ],
+                default: 'add'
+            );
+
+            if ($action === 'cancel' || $action === null || $action === '') {
+                if (count($cart) > 0) {
+                    if (!$this->confirm("Keranjang tidak kosong. Yakin ingin membatalkan transaksi?", false)) {
+                        continue;
+                    }
+                }
+                return; // KEMBALI KE MENU UTAMA
+            }
+
+            if ($action === 'add') {
+                $products = Product::where('stock', '>', 0)->get();
+
+                if ($products->isEmpty()) {
+                    $this->error("Tidak ada barang tersedia (Stok Habis).");
+                    continue;
+                }
+
+                $prodOptions = [];
+                foreach ($products as $p) {
+                    $prodOptions[$p->id] = "[{$p->code}] {$p->name} - {$this->formatRupiah($p->price)} (Stok: {$p->stock})";
+                }
+                $prodOptions['back'] = '<< Kembali';
+
+                $prodId = select(
+                    label: 'Pilih Barang:',
+                    options: $prodOptions,
+                    scroll: 10
+                );
+
+                if ($prodId === 'back' || $prodId === null) {
+                    continue;
+                }
+
+                $choosen = $products->find($prodId);
+                // UPDATE: Pakai Validasi Helper
+                $qty = $this->askValidInteger("Jumlah beli (Stok: {$choosen->stock}):", 1);
+
+                if ($qty > $choosen->stock) {
+                    $this->error("Stok tidak cukup! Tersedia: {$choosen->stock}");
+                    continue;
+                }
+
+                $subtotal = $choosen->price * $qty;
+                $cart[] = [
+                    'product_id' => $choosen->id,
+                    'product_name' => $choosen->name,
+                    'price' => $choosen->price,
+                    'quantity' => $qty,
+                    'subtotal' => $subtotal
+                ];
+
+                // ========== MULAI: Perbaikan Bug Stok (Jangan kurangi di sini!) ==========
+                // $choosen->stock -= $qty;
+                // $choosen->save();
+                // Catatan: Stok hanya akan dikurangi saat checkout berhasil (DB Transaction).
+                // ========== AKHIR: Perbaikan Bug Stok ==========
+
+                $cartTotal += $subtotal;
+                $cartTitle = "Keranjang Belanja: " . count($cart) . " Item - Total: " . $this->formatRupiah($cartTotal);
+                $this->info("Berhasil ditambahkan ke keranjang.");
+            }
+
+            // ========== MULAI: Fitur Pencarian Barang saat Transaksi ==========
+            if ($action === 'search') {
+                $query = $this->ask("Masukkan Nama atau Kode Barang :");
+                if (empty($query)) continue;
+
+                $products = Product::where('stock', '>', 0)
+                    ->where(function($q) use ($query) {
+                        $q->where('name', 'like', "%{$query}%")
+                          ->orWhere('code', 'like', "%{$query}%");
+                    })->get();
+
+                if ($products->isEmpty()) {
+                    $this->error("Barang dengan kata kunci '{$query}' tidak ditemukan atau stok habis.");
+                    continue;
+                }
+
+                $prodOptions = [];
+                foreach ($products as $p) {
+                    $prodOptions[$p->id] = "[{$p->code}] {$p->name} - {$this->formatRupiah($p->price)} (Stok: {$p->stock})";
+                }
+                $prodOptions['back'] = '<< Kembali';
+
+                $prodId = select(label: 'Hasil Pencarian:', options: $prodOptions, scroll: 10);
+                if ($prodId === 'back' || $prodId === null) continue;
+
+                $choosen = $products->find($prodId);
+                $qty = $this->askValidInteger("Jumlah beli (Stok: {$choosen->stock}):", 1);
+
+                if ($qty > $choosen->stock) {
+                    $this->error("Stok tidak cukup! Tersedia: {$choosen->stock}");
+                    continue;
+                }
+
+                $subtotal = $choosen->price * $qty;
+                $cart[] = [
+                    'product_id' => $choosen->id,
+                    'product_name' => $choosen->name,
+                    'price' => $choosen->price,
+                    'quantity' => $qty,
+                    'subtotal' => $subtotal
+                ];
+
+                $cartTotal += $subtotal;
+                $cartTitle = "Keranjang Belanja: " . count($cart) . " Item - Total: " . $this->formatRupiah($cartTotal);
+                $this->info("Berhasil ditambahkan ke keranjang.");
+            }
+            // ========== AKHIR: Fitur Pencarian Barang saat Transaksi ==========
+
+            // ========== MULAI: Fitur Kelola Keranjang (Edit/Hapus Item) ==========
+            if ($action === 'edit') {
+                if (empty($cart)) {
+                    $this->error("Keranjang masih kosong!");
+                    continue;
+                }
+
+                $editOptions = [];
+                foreach ($cart as $index => $item) {
+                    $editOptions[$index] = "{$item['product_name']} (Qty: {$item['quantity']}) - Subtotal: {$this->formatRupiah($item['subtotal'])}";
+                }
+                $editOptions['back'] = '<< Kembali';
+
+                $selectedIndex = select(label: 'Pilih Item untuk Dikelola:', options: $editOptions, scroll: 10);
+                if ($selectedIndex === 'back' || $selectedIndex === null) continue;
+
+                $subAction = select(
+                    label: 'Aksi Item:',
+                    options: [
+                        'change' => 'Ubah Jumlah (Qty)',
+                        'remove' => 'Hapus dari Keranjang',
+                        'back' => 'Kembali'
+                    ]
+                );
+
+                if ($subAction === 'back') continue;
+
+                if ($subAction === 'remove') {
+                    $cartTotal -= $cart[$selectedIndex]['subtotal'];
+                    $this->info("{$cart[$selectedIndex]['product_name']} dihapus dari keranjang.");
+                    unset($cart[$selectedIndex]);
+                    $cart = array_values($cart); // Re-index array
+                }
+
+                if ($subAction === 'change') {
+                    $item = $cart[$selectedIndex];
+                    $prod = Product::find($item['product_id']);
+                    $newQty = $this->askValidInteger("Masukkan Jumlah Baru (Stok: {$prod->stock}):", 1);
+
+                    if ($newQty > $prod->stock) {
+                        $this->error("Gagal! Stok tidak cukup. Tersedia: {$prod->stock}");
+                    } else {
+                        $cartTotal -= $item['subtotal'];
+                        $cart[$selectedIndex]['quantity'] = $newQty;
+                        $cart[$selectedIndex]['subtotal'] = $item['price'] * $newQty;
+                        $cartTotal += $cart[$selectedIndex]['subtotal'];
+                        $this->info("Jumlah berhasil diubah.");
+                    }
+                }
+                $cartTitle = "Keranjang Belanja: " . count($cart) . " Item - Total: " . $this->formatRupiah($cartTotal);
+            }
+            // ========== AKHIR: Fitur Kelola Keranjang (Edit/Hapus Item) ==========
+
+            if ($action === 'view') {
+                if (empty($cart)) {
+                    $this->info("Keranjang masih kosong.");
+                } else {
+                    $headers = ['Nama', 'Harga', 'Qty', 'Subtotal'];
+                    $data = array_map(function ($item) {
+                        return [
+                            $item['product_name'],
+                            $this->formatRupiah($item['price']),
+                            $item['quantity'],
+                            $this->formatRupiah($item['subtotal'])
+                        ];
+                    }, $cart);
+                    $this->table($headers, $data);
+                    $this->info("Total Sementara: " . $this->formatRupiah($cartTotal));
+                }
+            }
+
+            if ($action === 'checkout') {
+                if (empty($cart)) {
+                    $this->error("Keranjang kosong!");
+                    continue;
+                }
+
+                $this->info("=== CHECKOUT ===");
+                $this->info("Total Tagihan: " . $this->formatRupiah($cartTotal));
+
+                $payment = 0;
+                while ($payment < $cartTotal) {
+                    // UPDATE: Pakai Validasi Helper
+                    $payment = $this->askValidInteger("Masukkan Jumlah Uang Tunai:", 0);
+                    if ($payment < $cartTotal) {
+                        $this->error("Uang kurang! Kurang: " . $this->formatRupiah($cartTotal - $payment));
+                    }
+                }
+
+                $kembali = $payment - $cartTotal;
+                $this->info("Kembalian: " . $this->formatRupiah($kembali));
+
+                $saleId = (string) Str::uuid();
+
+                // ========== MULAI: Implementasi DB Transaction & Final Stock Check ==========
+                try {
+                    DB::beginTransaction();
+
+                    foreach ($cart as $item) {
+                        // Cek stok sekali lagi sebelum benar-benar menyimpan
+                        $prod = Product::find($item['product_id']);
+                        if ($prod->stock < $item['quantity']) {
+                            throw new \Exception("Gagal! Stok '{$prod->name}' tidak cukup (Tersedia: {$prod->stock}).");
+                        }
+
+                        // Simpan Transaksi
+                        $trx = new SaleTransaction();
+                        $trx->sale_id = $saleId;
+                        $trx->product_id = $item['product_id'];
+                        $trx->price = $item['price'];
+                        $trx->quantity = $item['quantity'];
+                        $trx->save();
+
+                        // Kurangi Stok Secara Permanen
+                        $prod->stock -= $item['quantity'];
+                        $prod->save();
+                    }
+
+                    DB::commit();
+                } catch (\Exception $e) {
+                    DB::rollBack();
+                    $this->error($e->getMessage());
+                    $this->info("Transaksi dibatalkan. Mengembalikan ke menu utama.");
+                    return;
+                }
+                // ========== AKHIR: Implementasi DB Transaction & Final Stock Check ==========
+
+                $strukContent = $this->generateStrukCart($cart, $cartTotal, $payment, $kembali, substr($saleId, 0, 8));
+                $this->line($strukContent);
+
+                if ($this->confirm("Simpan struk?", true)) {
+                    $strukDir = database_path('struk');
+                    if (!file_exists($strukDir))
+                        mkdir($strukDir, 0755, true);
+                    $file = $strukDir . '/struk_cart_' . date('YmdHis') . '.txt';
+                    file_put_contents($file, $strukContent);
+                    $this->info("Struk tersimpan: $file");
+                }
+
+                return; // Selesai transaksi, KEMBALI KE MENU UTAMA
+            }
+        }
+    }
+
+    // =========================================================================
+    // MODUL LAPORAN PENJUALAN
+    // (Method ini masih pakai cara lama - akan direfactor nanti)
+    // =========================================================================
+
+
+    {
+        $this->info("Daftar Kategori Barang");
+        $categories = Category::all();
+
+        if ($categories->isEmpty()) {
+            $this->error("Belum ada data Kategori.");
+            return;
+        }
+
+        // ========== MULAI: Submenu Kategori dengan Fitur Pencarian ==========
+        $options = ['search' => '🔍 Cari Kategori (Nama/Kode)'];
+        foreach ($categories as $cat) {
+            $options[$cat->id] = "[{$cat->code}] {$cat->name}";
+        }
+        $options['back'] = "⬅ Kembali ke Menu Utama";
+
+        while (true) {
+            $selectedId = select(
+                label: 'Pilih atau Cari Kategori:',
+                options: $options,
+                scroll: 10
+            );
+
+            if ($selectedId === 'search') {
+                $query = $this->ask("Masukkan Nama atau Kode Kategori :");
+                if (empty($query)) continue;
+                
+                $filtered = $categories->filter(function($c) use ($query) {
+                    return str_contains(strtolower((string)$c->name), strtolower($query)) || 
+                           str_contains(strtolower((string)$c->code), strtolower($query));
+                });
+
+                if ($filtered->isEmpty()) {
+                    $this->error("Kategori '{$query}' tidak ditemukan.");
+                    continue;
+                }
+
+                $searchSubOptions = [];
+                foreach ($filtered as $f) {
+                    $searchSubOptions[$f->id] = "[{$f->code}] {$f->name}";
+                }
+                $searchSubOptions['back'] = '<< Kembali';
+                $selectedId = select(label: 'Hasil Pencarian:', options: $searchSubOptions);
+                if ($selectedId === 'back' || $selectedId === null) continue;
+            }
+
+            if ($selectedId === null || $selectedId === 'back' || $selectedId === '') {
+                $this->info("Kembali ke Menu Utama...");
+                return;
+            }
+        // ========== AKHIR: Submenu Kategori dengan Fitur Pencarian ==========
+
+            // Tampilkan Detail
+            $selectedCat = $categories->firstWhere('id', $selectedId);
+            $this->line("");
+            $this->info("=== DETAIL KATEGORI ===");
+            $this->line("Kode   : " . $selectedCat->code);
+            $this->line("Nama   : " . $selectedCat->name);
+            $this->line("Dibuat : " . $selectedCat->created_at);
+            $this->line("Diubah : " . $selectedCat->updated_at);
+            $this->line("=======================");
+
+            // Prompt Lanjut
+            $nextAction = select(
+                label: 'Aksi Selanjutnya:',
+                options: [
+                    'search' => 'Cari Lagi',
+                    'menu' => 'Kembali ke Menu Utama'
+                ],
+                default: 'search'
+            );
+
+            if ($nextAction === 'menu' || $nextAction === null || $nextAction === '') {
+                $this->info("Kembali ke Menu Utama...");
+                return;
+            }
+            // Jika 'search', loop akan berulang
+            $this->line("");
+        }
+        // ==============================
+        // END UPDATE: Submenu Kategori Loop
+        // Hasil: Navigasi intuitif (Daftar -> Detail -> Daftar/Menu)
+        // ==============================
+    }
+
+    private function handleCategoryAdd()
+    {
+        $this->info("Tambah Kategori Barang");
+        $category = new Category();
+        // Validasi Kode (Duplikasi)
+        // ========== MULAI: Validasi Kode Unik (Termasuk Data Terhapus) ==========
+        do {
+            $code = $this->askValidInteger("Masukkan Kode Kategori :");
+            if (Category::withTrashed()->where('code', $code)->exists()) {
+                $this->error("Kode '{$code}' sudah pernah digunakan (mungkin di data terhapus). Silakan gunakan kode lain.");
+            } else {
+                $category->code = $code;
+                break;
+            }
+        } while (true);
+        // ========== AKHIR: Validasi Kode Unik ==========
+
+        // Validasi Nama (Tidak Boleh Kosong)
+        do {
+            $category->name = $this->ask("Masukkan Nama Kategori : ");
+            if (empty(trim($category->name))) {
+                $this->error("Nama tidak boleh kosong!");
+            } else {
+                break;
+            }
+        } while (true);
+
+        if ($category->save()) {
+            $this->notify("Success", "data berhasil disimpan");
+        } else {
+            $this->notify("Failed", "data gagal disimpan");
+        }
+    }
+
+    private function handleCategoryEdit()
+    {
+        $this->info("Ubah Kategori Barang");
+        $code = $this->askValidInteger("Masukkan Kode Kategori yang akan diubah :");
+        $category = Category::where('code', $code)->first();
+
+        if (!$category) {
+            $this->error("Kategori dengan kode {$code} tidak ditemukan!");
+            return;
+        }
+
+        // ========== MULAI: Validasi Kode Baru (Duplikasi) saat Edit Kategori ==========
+        do {
+            $newCode = $this->askValidInteger("Masukkan Kode Kategori Baru :", 0, (string) $category->code);
+            if ($newCode != $category->code && Category::withTrashed()->where('code', $newCode)->exists()) {
+                $this->error("Kode '{$newCode}' sudah digunakan! Silakan masukkan kode yang berbeda.");
+            } else {
+                $category->code = $newCode;
+                break;
+            }
+        } while (true);
+        // ========== AKHIR: Validasi Kode Baru (Duplikasi) saat Edit Kategori ==========
+
+        // Validasi Nama (Tidak Boleh Kosong)
+        do {
+            $category->name = $this->ask("Masukkan Nama Kategori : ", $category->name);
+            if (empty(trim($category->name))) {
+                $this->error("Nama tidak boleh kosong!");
+            } else {
+                break;
+            }
+        } while (true);
+
+        if ($category->save()) {
+            $this->notify("Success", "data berhasil diubah");
+        } else {
+            $this->notify("Failed", "data gagal diubah");
+        }
+    }
+
+    private function handleCategoryDelete()
+    {
+        $this->info("Hapus Kategori Barang");
+        $code = $this->askValidInteger("Masukkan Kode Kategori yang akan dihapus :");
+        $category = Category::where('code', $code)->first();
+
+        if (!$category) {
+            $this->error("Kategori dengan kode {$code} tidak ditemukan!");
+            return;
+        }
+
+        if (!$this->confirm("Apakah Anda yakin ingin menghapus kategori '{$category->name}'?")) {
+            $this->info("Penghapusan dibatalkan.");
+            return;
+        }
+
+        // CEK INTEGRITAS DATA: Jangan hapus jika ada barang
+        $productCount = Product::where('category_id', $category->id)->count();
+        if ($productCount > 0) {
+            $this->error("GAGAL: Kategori tidak dapat dihapus karena masih memiliki {$productCount} barang terdaftar.");
+            $this->line("Silahkan hapus atau pindahkan barang terlebih dahulu.");
+            return;
+        }
+
+        if ($category->delete()) {
+            $this->notify("Success", "data berhasil dihapus");
+        } else {
+            $this->notify("Failed", "data gagal dihapus");
+        }
+    }
+
+    // =========================================================================
+    // MODUL JENIS BARANG (VARIETY)
+    // =========================================================================
+
+    private function handleVarietyList()
+    {
+        $this->info("Daftar Jenis Barang");
+        $varieties = Variety::all();
+
+        if ($varieties->isEmpty()) {
+            $this->error("Belum ada data Jenis Barang.");
+            return;
+        }
+
+        // ========== MULAI: Submenu Jenis dengan Fitur Pencarian ==========
+        $options = ['search' => '🔍 Cari Jenis (Nama/Kode)'];
+        foreach ($varieties as $var) {
+            $options[$var->id] = "[{$var->code}] {$var->name}";
+        }
+        $options['back'] = "⬅ Kembali ke Menu Utama";
+
+        while (true) {
+            $selectedId = select(
+                label: 'Pilih atau Cari Jenis Barang:',
+                options: $options,
+                scroll: 10
+            );
+
+            if ($selectedId === 'search') {
+                $query = $this->ask("Masukkan Nama atau Kode Jenis :");
+                if (empty($query)) continue;
+                
+                $filtered = $varieties->filter(function($v) use ($query) {
+                    return str_contains(strtolower((string)$v->name), strtolower($query)) || 
+                           str_contains(strtolower((string)$v->code), strtolower($query));
+                });
+
+                if ($filtered->isEmpty()) {
+                    $this->error("Jenis '{$query}' tidak ditemukan.");
+                    continue;
+                }
+
+                $searchSubOptions = [];
+                foreach ($filtered as $f) {
+                    $searchSubOptions[$f->id] = "[{$f->code}] {$f->name}";
+                }
+                $searchSubOptions['back'] = '<< Kembali';
+                $selectedId = select(label: 'Hasil Pencarian:', options: $searchSubOptions);
+                if ($selectedId === 'back' || $selectedId === null) continue;
+            }
+
+            if ($selectedId === null || $selectedId === 'back' || $selectedId === '') {
+                $this->info("Kembali ke Menu Utama...");
+                return;
+            }
+        // ========== AKHIR: Submenu Jenis dengan Fitur Pencarian ==========
+
+            $selectedVar = $varieties->firstWhere('id', $selectedId);
+            $this->line("");
+            $this->info("=== DETAIL JENIS BARANG ===");
+            $this->line("Kode   : " . $selectedVar->code);
+            $this->line("Nama   : " . $selectedVar->name);
+            $this->line("Dibuat : " . $selectedVar->created_at);
+            $this->line("Diubah : " . $selectedVar->updated_at);
+            $this->line("=========================");
+
+            $nextAction = select(
+                label: 'Aksi Selanjutnya:',
+                options: [
+                    'search' => 'Cari Lagi',
+                    'menu' => 'Kembali ke Menu Utama'
+                ],
+                default: 'search'
+            );
+
+            if ($nextAction === 'menu' || $nextAction === null || $nextAction === '') {
+                $this->info("Kembali ke Menu Utama...");
+                return;
+            }
+            $this->line("");
+        }
+        // ==============================
+        // END UPDATE: Submenu Jenis Barang Loop
+        // ==============================
+    }
+
+    private function handleVarietyAdd()
+    {
+        $this->info("Tambah Jenis Barang");
+        $variety = new Variety();
+        
+        // Validasi Kode (Duplikasi)
+        // ========== MULAI: Validasi Kode Unik (Termasuk Data Terhapus) ==========
+        do {
+            $code = $this->askValidInteger("Masukkan Kode Jenis :");
+            if (Variety::withTrashed()->where('code', $code)->exists()) {
+                $this->error("Kode '{$code}' sudah pernah digunakan (mungkin di data terhapus). Silakan gunakan kode lain.");
+            } else {
+                $variety->code = $code;
+                break;
+            }
+        } while (true);
+        // ========== AKHIR: Validasi Kode Unik ==========
+
+        // Validasi Nama (Tidak Boleh Kosong)
+        do {
+            $variety->name = $this->ask("Masukkan Nama Jenis : ");
+            if (empty(trim($variety->name))) {
+                $this->error("Nama tidak boleh kosong!");
+            } else {
+                break;
+            }
+        } while (true);
+
+        if ($variety->save()) {
+            $this->notify("Success", "data berhasil disimpan");
+        } else {
+            $this->notify("Failed", "data gagal disimpan");
+        }
+    }
+
+    private function handleVarietyEdit()
+    {
+        $this->info("Ubah Jenis Barang");
+        $code = $this->askValidInteger("Masukkan Kode Jenis yang akan diubah :");
+        $variety = Variety::where('code', $code)->first();
+
+        if (!$variety) {
+            $this->error("Jenis dengan kode {$code} tidak ditemukan!");
+            return;
+        }
+
+        // ========== MULAI: Validasi Kode Baru (Duplikasi) saat Edit Jenis ==========
+        do {
+            $newCode = $this->askValidInteger("Masukkan Kode Jenis Baru :", 0, (string) $variety->code);
+            if ($newCode != $variety->code && Variety::withTrashed()->where('code', $newCode)->exists()) {
+                $this->error("Kode '{$newCode}' sudah digunakan! Silakan masukkan kode yang berbeda.");
+            } else {
+                $variety->code = $newCode;
+                break;
+            }
+        } while (true);
+        // ========== AKHIR: Validasi Kode Baru (Duplikasi) saat Edit Jenis ==========
+
+        // Validasi Nama (Tidak Boleh Kosong)
+        do {
+            $variety->name = $this->ask("Masukkan Nama Jenis : ", $variety->name);
+            if (empty(trim($variety->name))) {
+                $this->error("Nama tidak boleh kosong!");
+            } else {
+                break;
+            }
+        } while (true);
+
+        if ($variety->save()) {
+            $this->notify("Success", "data berhasil diubah");
+        } else {
+            $this->notify("Failed", "data gagal diubah");
+        }
+    }
+
+    private function handleVarietyDelete()
+    {
+        $this->info("Hapus Jenis Barang");
+        $code = $this->askValidInteger("Masukkan Kode Jenis yang akan dihapus :");
+        $variety = Variety::where('code', $code)->first();
+
+        if (!$variety) {
+            $this->error("Jenis dengan kode {$code} tidak ditemukan!");
+            return;
+        }
+
+        if (!$this->confirm("Apakah Anda yakin ingin menghapus jenis '{$variety->name}'?")) {
+            $this->info("Penghapusan dibatalkan.");
+            return;
+        }
+
+        // INTEGRITAS: Cek apakah masih ada produk dengan jenis ini
+        $productCount = Product::where('variety_id', $variety->id)->count();
+        if ($productCount > 0) {
+            $this->error("GAGAL: Jenis tidak dapat dihapus karena masih memiliki {$productCount} produk terdaftar.");
+            $this->line("Silahkan hapus atau pindahkan produk terlebih dahulu.");
+            return;
+        }
+
+        if ($variety->delete()) {
+            $this->notify("Success", "data berhasil dihapus");
+        } else {
+            $this->notify("Failed", "data gagal dihapus");
+        }
+    }
+
+    // =========================================================================
+    // MODUL BARANG (PRODUCT)
+    // =========================================================================
+
+    private function handleProductList()
+    {
+        $this->info("Daftar Barang");
+        $products = Product::with(['category', 'variety'])->get();
+
+        if ($products->isEmpty()) {
+            $this->error("Belum ada data Barang.");
+            return;
+        }
+
+        // ========== MULAI: Submenu Produk dengan Fitur Pencarian ==========
+        $options = ['search' => '🔍 Cari Barang (Nama/Kode/Barcode)'];
+        foreach ($products as $prod) {
+            $label = "[{$prod->code}] {$prod->name} - " . $this->formatRupiah($prod->price) . " (Stok: {$prod->stock})";
+            $options[$prod->id] = $label;
+        }
+        $options['back'] = "⬅ Kembali ke Menu Utama";
+
+        while (true) {
+            $selectedId = select(
+                label: 'Pilih atau Cari Barang:',
+                options: $options,
+                scroll: 10
+            );
+
+            if ($selectedId === 'search') {
+                $query = $this->ask("Masukkan Nama/Kode/Barcode :");
+                if (empty($query)) continue;
+                
+                $filtered = $products->filter(function($p) use ($query) {
+                    return str_contains(strtolower((string)$p->name), strtolower($query)) || 
+                           str_contains(strtolower((string)$p->code), strtolower($query));
+                });
+
+                if ($filtered->isEmpty()) {
+                    $this->error("Barang '{$query}' tidak ditemukan.");
+                    continue;
+                }
+
+                $searchSubOptions = [];
+                foreach ($filtered as $f) {
+                    $searchSubOptions[$f->id] = "[{$f->code}] {$f->name} (Stok: {$f->stock})";
+                }
+                $searchSubOptions['back'] = '<< Kembali';
+                $selectedId = select(label: 'Hasil Pencarian:', options: $searchSubOptions);
+                if ($selectedId === 'back' || $selectedId === null) continue;
+            }
+
+            if ($selectedId === null || $selectedId === 'back' || $selectedId === '') {
+                $this->info("Kembali ke Menu Utama...");
+                return;
+            }
+        // ========== AKHIR: Submenu Produk dengan Fitur Pencarian ==========
+
+            $selectedProd = $products->firstWhere('id', $selectedId);
+            $catName = $selectedProd->category ? $selectedProd->category->name : '-';
+            $varName = $selectedProd->variety ? $selectedProd->variety->name : '-';
+
+            $this->line("");
+            $this->info("=== DETAIL BARANG ===");
+            $this->line("Kode     : " . $selectedProd->code);
+            $this->line("Nama     : " . $selectedProd->name);
+            $this->line("Harga    : " . $this->formatRupiah($selectedProd->price));
+            $this->line("Stok     : " . $selectedProd->stock);
+            $this->line("Kategori : " . $catName);
+            $this->line("Jenis    : " . $varName);
+            $this->line("Dibuat   : " . $selectedProd->created_at);
+            $this->line("Diubah   : " . $selectedProd->updated_at);
+            $this->line("=====================");
+
+            $nextAction = select(
+                label: 'Aksi Selanjutnya:',
+                options: [
+                    'search' => 'Cari Lagi',
+                    'menu' => 'Kembali ke Menu Utama'
+                ],
+                default: 'search'
+            );
+
+            if ($nextAction === 'menu' || $nextAction === null || $nextAction === '') {
+                $this->info("Kembali ke Menu Utama...");
+                return;
+            }
+            $this->line("");
+        }
+        // ==============================
+        // END UPDATE: Submenu Produk Loop
+        // ==============================
+    }
+
+    private function handleProductAdd()
+    {
+        $this->info("Tambah Barang");
+        $product = new Product();
+
+        // Cek Ketersediaan Kategori
+        $categories = Category::all()->pluck('name', 'id')->toArray();
+        if (empty($categories)) {
+            $this->error("Belum ada Kategori! Silakan tambahkan Kategori terlebih dahulu.");
+            return;
+        }
+        $product->category_id = select(label: 'Pilih Kategori Barang:', options: $categories);
+
+        // Cek Ketersediaan Jenis
+        $varieties = Variety::all()->pluck('name', 'id')->toArray();
+        if (empty($varieties)) {
+            $this->error("Belum ada Jenis Barang! Silakan tambahkan Jenis terlebih dahulu.");
+            return;
+        }
+        $product->variety_id = select(label: 'Pilih Jenis Barang:', options: $varieties);
+
+        // ========== MULAI: Gunakan ask() biasa untuk mendukung Barcode String (Nol di depan) ==========
+        do {
+            $product->code = $this->ask("Masukkan Kode Barang :");
+            if (empty($product->code)) {
+                $this->error("Kode tidak boleh kosong!");
+                continue;
+            }
+            if (Product::withTrashed()->where('code', $product->code)->exists()) {
+                $this->error("Kode '{$product->code}' sudah digunakan (mungkin di data terhapus)! Silakan masukkan kode lain.");
+            } else {
+                break;
+            }
+        } while (true);
+        // ========== AKHIR: Gunakan ask() biasa ==========
+
+        $product->name = $this->ask("Masukkan Nama Barang : ");
+        $product->price = $this->askValidInteger("Masukkan Harga Barang (harus > 0) :", 1);
+        $product->stock = $this->askValidInteger("Masukkan Jumlah Stok (harus >= 0) :", 0);
+
+        if ($product->save()) {
+            $this->notify("Success", "data berhasil disimpan");
+        } else {
+            $this->notify("Failed", "data gagal disimpan");
+        }
+    }
+
+    private function handleProductEdit()
+    {
+        $this->info("Ubah Barang");
+        $code = $this->askValidInteger("Masukkan Kode Barang yang akan diubah :");
+        $product = Product::where('code', $code)->first();
+
+        if (!$product) {
+            $this->error("Barang dengan kode {$code} tidak ditemukan!");
+            return;
+        }
+
+        $categories = Category::all()->pluck('name', 'id')->toArray();
+        $product->category_id = select(label: 'Pilih Kategori Barang:', options: $categories);
+
+        $varieties = Variety::all()->pluck('name', 'id')->toArray();
+        $product->variety_id = select(label: 'Pilih Jenis Barang:', options: $varieties);
+
+        // ========== MULAI: Gunakan ask() untuk mendukung Barcode String (Nol di depan) saat Edit ==========
+        do {
+            $newCode = $this->ask("Masukkan Kode Barang Baru :", (string) $product->code);
+            if (empty($newCode)) {
+                $this->error("Kode tidak boleh kosong!");
+                continue;
+            }
+            if ($newCode != $product->code && Product::withTrashed()->where('code', $newCode)->exists()) {
+                $this->error("Kode '{$newCode}' sudah digunakan oleh produk lain! Silakan masukkan kode yang berbeda.");
+            } else {
+                $product->code = $newCode;
+                break;
+            }
+        } while (true);
+        // ========== AKHIR: Gunakan ask() untuk mendukung Barcode String saat Edit ==========
+
+        $product->name = $this->ask("Masukkan Nama Barang : ", $product->name);
+        
+        // Gunakan Helper Validasi
+        $product->price = $this->askValidInteger("Masukkan Harga Barang (harus > 0) :", 1, (string) $product->price);
+        $product->stock = $this->askValidInteger("Masukkan Jumlah Stok (harus >= 0) :", 0, (string) $product->stock);
+
+        if ($product->save()) {
+            $this->notify("Success", "data berhasil diubah");
+        } else {
+            $this->notify("Failed", "data gagal diubah");
+        }
+    }
+
+    private function handleProductDelete()
+    {
+        $this->info("Hapus Barang");
+        $code = $this->askValidInteger("Masukkan Kode Barang yang akan dihapus :");
+        $product = Product::where('code', $code)->first();
+
+        if (!$product) {
+            $this->error("Barang dengan kode {$code} tidak ditemukan!");
+            return;
+        }
+
+        if (!$this->confirm("Apakah Anda yakin ingin menghapus barang '{$product->name}'?")) {
+            $this->info("Penghapusan dibatalkan.");
+            return;
+        }
+
+        // CEK INTEGRITAS DATA: Jangan hapus jika sudah ada transaksi penjualan
+        $trxCount = SaleTransaction::where('product_id', $product->id)->count();
+        if ($trxCount > 0) {
+            $this->error("GAGAL: Barang tidak dapat dihapus karena memiliki riwayat {$trxCount} transaksi penjualan.");
+            $this->line("Data barang diperlukan untuk laporan penjualan.");
+            return;
+        }
+
+        if ($product->delete()) {
+            $this->notify("Success", "data berhasil dihapus");
+        } else {
+            $this->notify("Failed", "data gagal dihapus");
+        }
+    }
+
+    // =========================================================================
+    // MODUL PENJUALAN
+    // =========================================================================
+
+    private function handleSalesList()
+    {
+        $this->info("Daftar Penjualan Barang");
+
+        // ========== MULAI: Submenu Filter Laporan agar Terminal tidak Lag/Bug ==========
+        $filter = select(
+            label: 'Filter Laporan:',
+            options: [
+                'today' => '📅 Hari Ini',
+                'recent' => '🕒 20 Transaksi Terakhir',
+                'all' => '📊 Semua (Bisa berat jika data banyak)',
+                'back' => '⬅ Kembali'
+            ],
+            default: 'today'
+        );
+
+        if ($filter === 'back') return;
+
+        $query = SaleTransaction::with(['product' => function($q) { 
+            $q->withTrashed()->with('category'); 
+        }])->latest();
+
+        if ($filter === 'today') {
+            $query->where('created_at', '>=', now()->startOfDay());
+        } elseif ($filter === 'recent') {
+            $query->limit(20);
+        }
+
+        $sales = $query->get();
+        // ========== AKHIR: Submenu Filter Laporan ==========
+
+        if ($sales->isEmpty()) {
+            $this->info("Belum ada data penjualan untuk filter ini.");
+            $this->ask("Tekan Enter untuk kembali...");
+            return;
+        }
+
+        // ========== MULAI: Perbaikan Tampilan Laporan Penjualan ==========
+        $headers = ['Kode', 'Nama Produk', 'Harga Satuan', 'Qty', 'Total Bayar', 'Waktu Transaksi'];
+        $dataRows = $sales->map(function ($item) {
+            return [
+                'Kode' => $item->product ? $item->product->code : 'DEL',
+                'Nama Produk' => $item->product ? $item->product->name : 'Deleted',
+                'Harga Satuan' => $this->formatRupiah($item->price),
+                'Qty' => $item->quantity,
+                'Total Bayar' => $this->formatRupiah($item->quantity * $item->price),
+                'Waktu Transaksi' => $item->created_at->format('d-m-Y H:i:s'),
+            ];
+        })->toArray();
+
+        $this->table($headers, $dataRows);
+        
+        // --- Rekapitulasi (Selalu ambil dari DB agar Akurat & Ringan) ---
+        $this->line("");
+        $this->info("--- RINGKASAN REKAPITULASI (Seluruh Waktu) ---");
+        
+        $today = now()->startOfDay();
+        // ========== MULAI: Optimasi Hitung Total langsung di DB (SQLite) ==========
+        $todayTotal = SaleTransaction::where('created_at', '>=', $today)
+            ->selectRaw('SUM(price * quantity) as total')
+            ->value('total') ?? 0;
+            
+        $grandTotal = SaleTransaction::selectRaw('SUM(price * quantity) as total')
+            ->value('total') ?? 0;
+        // ========== AKHIR: Optimasi Hitung Total ==========
+
+        $this->info("Total Pendapatan Hari Ini: " . $this->formatRupiah((int)$todayTotal));
+        $this->info("Total Seluruh Pendapatan : " . $this->formatRupiah((int)$grandTotal));
+
+        // Rekap per Kategori (diambil dari semua data agar valid)
+        $this->line("");
+        $this->info("Pendapatan per Kategori (Global):");
+        $catRecap = [];
+        
+        // ========== MULAI: Optimasi Hitung per Kategori langsung di DB ==========
+        // Gunakan DB::table atau Eloquent join untuk efisiensi
+        $catData = DB::table('sale_transactions')
+            ->join('products', 'sale_transactions.product_id', '=', 'products.id')
+            ->join('categories', 'products.category_id', '=', 'categories.id')
+            ->selectRaw('categories.name as cat_name, sum(sale_transactions.price * sale_transactions.quantity) as total')
+            ->groupBy('cat_name')
+            ->get();
+        // ========== AKHIR: Optimasi Hitung per Kategori ==========
+
+        foreach ($catData as $item) {
+            $this->line("- {$item->cat_name}: " . $this->formatRupiah((int)$item->total));
+            $catRecap[$item->cat_name] = $item->total;
+        }
+        // ========== AKHIR: Perbaikan Tampilan Laporan Penjualan ==========
+
+        // ========== MULAI: Fitur Ekspor Laporan ke TXT ==========
+        $this->line("");
+        if ($this->confirm("Apakah Anda ingin mengekspor laporan ini ke file .txt?", true)) {
+            $this->exportSalesToTxt($dataRows, $grandTotal, $catRecap);
+        }
+        // ========== AKHIR: Fitur Ekspor Laporan ke TXT ==========
+
+        $this->ask("Tekan Enter untuk kembali ke menu utama");
+    }
+
+    // ========== MULAI: Global Helper Ekspor Laporan ==========
+    private function exportSalesToTxt(array $dataRows, int $grandTotal, array $catRecap)
+    {
+        $filename = 'laporan_penjualan_' . date('YmdHis') . '.txt';
+        $path = database_path('laporan');
+        
+        if (!file_exists($path)) {
+            mkdir($path, 0755, true);
+        }
+
+        $fullPath = $path . DIRECTORY_SEPARATOR . $filename;
+        
+        $content = "========================================\n";
+        $content .= "       LAPORAN PENJUALAN SHERINA MART    \n";
+        $content .= "       Tanggal Cetak: " . date('d/m/Y H:i:s') . "\n";
+        $content .= "========================================\n\n";
+        
+        $content .= "DETAIL TRANSAKSI:\n";
+        $content .= str_pad("Kode", 10) . str_pad("Nama", 20) . str_pad("Harga", 15) . str_pad("Qty", 5) . "Total\n";
+        $content .= str_repeat("-", 60) . "\n";
+        
+        foreach ($dataRows as $row) {
+            $content .= str_pad((string)$row['Kode'], 10) . 
+                        str_pad(substr($row['Nama Produk'], 0, 18), 20) . 
+                        str_pad($row['Harga Satuan'], 15) . 
+                        str_pad((string)$row['Qty'], 5) . 
+                        $row['Total Bayar'] . "\n";
+        }
+        
+        $content .= "\n" . str_repeat("=", 60) . "\n";
+        $content .= "RINGKASAN:\n";
+        foreach ($catRecap as $name => $total) {
+            $content .= "- {$name}: " . $this->formatRupiah($total) . "\n";
+        }
+        $content .= "----------------------------------------\n";
+        $content .= "TOTAL SELURUH PENDAPATAN: " . $this->formatRupiah($grandTotal) . "\n";
+        $content .= "========================================\n";
+
+        file_put_contents($fullPath, $content);
+        $this->info("Berhasil! Laporan disimpan di: " . $fullPath);
+    }
+    // ========== AKHIR: Global Helper Ekspor Laporan ==========
+
+    // =========================================================================
+    // HELPER METHODS
+    // =========================================================================
+
+    private function getAsciiHeader(): string
+    {
+        return <<<EOT
+   _____ __               _                __  __            __ 
+  / ___// /_  ___  ____  (_)___  ____ _   /  |/  /___ ______/ /_
+  \__ \/ __ \/ _ \/ __ // / __ \/ __ `/  / /|_/ / __ `/ ___/ __/
+ ___/ / / / /  __/ /   / / / / / /_/ /  / /  / / /_/ / /  / /_  
+/____/_/ /_/\___/_/   /_/_/ /_/\__,_/  /_/  /_/\__,_/_/   \__/  
+                                                  by cycau09
+EOT;
+    }
+
+    /**
+     * Helper untuk meminta input integer dengan validasi loop.
+     * "Anti Salah Input"
+     */
+    private function askValidInteger(string $question, int $min = 0, ?string $default = null): int
+    {
+        do {
+            $input = $this->ask($question, $default);
+
+            // Jika input kosong dan ada default, pakai default (Logic ask() sebenarnya sudah handle ini, tapi kita pastikan)
+            if ($input === null && $default !== null) {
+                return (int) $default;
+            }
+
+            if (!is_numeric($input)) {
+                $this->error("Input tidak valid! Harap masukkan angka.");
+                continue;
+            }
+
+            $val = (int) $input;
+            if ($val < $min) {
+                $this->error("Nilai tidak valid! Minimal {$min}.");
+                continue;
+            }
+
+            return $val;
+        } while (true);
+    }
+
+    private function formatRupiah(int $amount): string
+    {
+        return 'Rp ' . number_format($amount, 0, ',', '.');
+    }
+
+    private function generateStrukCart(array $items, int $total, int $bayar, int $kembali, string $saleId): string
+    {
+        $tanggal = date('d/m/Y H:i:s');
+        $struk = "\n";
+        $struk .= "========================================\n";
+        $struk .= "           SHERINA MART                 \n";
+        $struk .= "     Jl.  No. 123, Kota abc             \n";
+        $struk .= "          Telp: 0812-xxxx-xxxx         \n";
+        $struk .= "========================================\n";
+        $struk .= "Tanggal       : {$tanggal}\n";
+        $struk .= "No. Transaksi : {$saleId}\n";
+        $struk .= "----------------------------------------\n";
+        $struk .= "ITEM                  QTY      TOTAL    \n";
+        $struk .= "----------------------------------------\n";
+
+        foreach ($items as $item) {
+            $nama = substr($item['product_name'], 0, 18);
+            $qty = $item['quantity'];
+            $subtotal = $this->formatRupiah($item['price'] * $item['quantity']);
+            $line1 = str_pad($nama, 20);
+            $line2 = str_pad((string) $qty, 5, " ", STR_PAD_BOTH);
+            $line3 = str_pad($subtotal, 13, " ", STR_PAD_LEFT);
+            $struk .= "{$line1}{$line2}{$line3}\n";
+        }
+
+        $struk .= "----------------------------------------\n";
+        $struk .= "TOTAL TAGIHAN : " . str_pad($this->formatRupiah($total), 22, " ", STR_PAD_LEFT) . "\n";
+        $struk .= "TUNAI         : " . str_pad($this->formatRupiah($bayar), 22, " ", STR_PAD_LEFT) . "\n";
+        $struk .= "KEMBALI       : " . str_pad($this->formatRupiah($kembali), 22, " ", STR_PAD_LEFT) . "\n";
+        $struk .= "========================================\n";
+        $struk .= "      Terima Kasih Atas Kunjungan      \n";
+        $struk .= "           Anda - Sherina Mart         \n";
+        $struk .= "========================================\n";
+
+        return $struk;
+    }
+
+    public function schedule(Schedule $schedule): void
+    {
+    }
+}
