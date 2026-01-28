@@ -21,8 +21,7 @@ use App\Actions\Barang\DaftarBarang;
 use App\Actions\Barang\TambahBarang;
 use App\Actions\Barang\UbahBarang;
 use App\Actions\Barang\HapusBarang;
-use App\Actions\Transaksi\TransaksiBaru;
-use App\Actions\Transaksi\BatalkanTransaksi;
+use App\Actions\Transaksi\MenuTransaksi;
 use App\Actions\Laporan\LaporanPenjualan;
 // ========== AKHIR: Import Action Classes ==========
 
@@ -88,7 +87,7 @@ class MenuCommand extends Command
                 switch ($option) {
                     // Transaksi - menggunakan Action Pattern
                     case 1:
-                        $this->handleTransaction();
+                        (new MenuTransaksi($this))->jalankan();
                         break;
                     
                     // Kategori - menggunakan Action Pattern
@@ -149,36 +148,6 @@ class MenuCommand extends Command
         }
     }
 
-    // ===========================================================================
-    // METHOD TRANSAKSI - Submenu untuk memilih jenis transaksi
-    // ===========================================================================
-
-    private function handleTransaction()
-    {
-        // Submenu Transaksi - loop sampai user memilih kembali
-        while (true) {
-            $subOption = select(
-                label: 'Menu Transaksi:',
-                options: [
-                    'new' => 'Transaksi Pembelian Baru',
-                    'void' => 'Batalkan Transaksi (Void)',
-                    'cancel' => 'Kembali ke Menu Utama',
-                ],
-            );
-
-            if ($subOption === 'cancel') {
-                return; // Kembali ke menu utama
-            }
-
-            if ($subOption === 'void') {
-                (new BatalkanTransaksi($this))->jalankan();
-            }
-
-            if ($subOption === 'new') {
-                (new TransaksiBaru($this))->jalankan();
-            }
-        }
-    }
 
     // ===========================================================================
     // HELPER METHODS (Fungsi pembantu yang dipakai di berbagai tempat)
